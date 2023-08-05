@@ -16,13 +16,51 @@ import path from 'path';
   }
 } */
 
-export class Lambdas extends cdk.Stack {
+export class RollingDice extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    new cdk.aws_lambda_nodejs.NodejsFunction(this, 'LambdaTests', {
-      entry: path.join(__dirname, 'LambdaTests', 'handler.ts'),
-      handler: 'handler',
-    });
+    const rollingDiceApi = new cdk.aws_apigateway.RestApi(
+      this,
+      'RollingDiceApi',
+      {}
+    );
+
+    //----------------------- roll a dice ------------
+
+    const rollADiceFunction = new cdk.aws_lambda_nodejs.NodejsFunction(
+      this,
+      'rollADiceFunction',
+      {
+        entry: path.join(__dirname, 'RollADice', 'handler.ts'),
+        handler: 'handler',
+      }
+    );
+
+    // this specifies the endpoint name
+    const diceResource = rollingDiceApi.root.addResource('dice');
+
+    diceResource.addMethod(
+      'GET',
+      new cdk.aws_apigateway.LambdaIntegration(rollADiceFunction)
+    );
+
+    //----------------------- roll multiple dices ------------
+
+    const rollMultipleDicesFunction = new cdk.aws_lambda_nodejs.NodejsFunction(
+      this,
+      'rollMultipleDicesFunction',
+      {
+        entry: path.join(__dirname, 'RollMultipleDices', 'handler.ts'),
+        handler: 'handler',
+      }
+    );
+
+    const amountDices = diceResource.addResource('{amountDices}');
+
+    amountDices.addMethod(
+      'GET',
+      new cdk.aws_apigateway.LambdaIntegration(rollMultipleDicesFunction)
+    );
   }
 }

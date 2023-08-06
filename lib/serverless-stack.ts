@@ -16,15 +16,11 @@ import path from 'path';
   }
 } */
 
-export class RollingDice extends cdk.Stack {
+export class DinacoAppStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    const rollingDiceApi = new cdk.aws_apigateway.RestApi(
-      this,
-      'RollingDiceApi',
-      {}
-    );
+    const DinacoApi = new cdk.aws_apigateway.RestApi(this, 'DinacoApi', {});
 
     //----------------------- roll a dice ------------
 
@@ -32,13 +28,13 @@ export class RollingDice extends cdk.Stack {
       this,
       'rollADiceFunction',
       {
-        entry: path.join(__dirname, 'RollADice', 'handler.ts'),
+        entry: path.join(__dirname, 'Dice/RollADice', 'handler.ts'),
         handler: 'handler',
       }
     );
 
     // this specifies the endpoint name
-    const diceResource = rollingDiceApi.root.addResource('dice');
+    const diceResource = DinacoApi.root.addResource('dice');
 
     diceResource.addMethod(
       'GET',
@@ -51,7 +47,7 @@ export class RollingDice extends cdk.Stack {
       this,
       'rollMultipleDicesFunction',
       {
-        entry: path.join(__dirname, 'RollMultipleDices', 'handler.ts'),
+        entry: path.join(__dirname, 'Dice/RollMultipleDices', 'handler.ts'),
         handler: 'handler',
       }
     );
@@ -62,5 +58,57 @@ export class RollingDice extends cdk.Stack {
       'GET',
       new cdk.aws_apigateway.LambdaIntegration(rollMultipleDicesFunction)
     );
+
+    // ------------- DynamoTable ----------
+
+    const notesDb = new cdk.aws_dynamodb.Table(this, 'notesDb', {
+      partitionKey: {
+        name: 'PK',
+        type: cdk.aws_dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: 'SK',
+        type: cdk.aws_dynamodb.AttributeType.STRING,
+      },
+      billingMode: cdk.aws_dynamodb.BillingMode.PAY_PER_REQUEST,
+    });
+
+    // ------------------------------ Lambdas for dynamo table ---------
+
+    const createNote = new cdk.aws_lambda_nodejs.NodejsFunction(
+      this,
+      'createNote',
+      {
+        entry: path.join(__dirname, 'Notes/CreateNote', 'handler.ts'),
+        handler: 'handler',
+        environment: {
+          TABLE_NAME: notesDb.tableName, // VERY IMPORTANT
+        },
+      }
+    );
+
+    notesDb.grantWriteData(createNote); // VERY IMPORTANT
+
+    const getNote = new cdk.aws_lambda_nodejs.NodejsFunction(this, 'getNote', {
+      entry: path.join(__dirname, 'Notes/GetNote', 'handler.ts'),
+      handler: 'handler',
+      environment: {
+        TABLE_NAME: notesDb.tableName, // VERY IMPORTANT
+      },
+    });
+
+    notesDb.grantReadData(getNote); // VERY IMPORTANT
+
+    const usersResource = DinacoApi.root
+      .addResource('users')
+      .addResource('{userId}');
+    const notesResource = usersResource.addResource('notes');
+    notesResource.addMethod(
+      'POST',
+      new cdk.aws_apigateway.LambdaIntegration(createNote)
+    );
+    notesResource
+      .addResource('{id}')
+      .addMethod('GET', new cdk.aws_apigateway.LambdaIntegration(getNote));
   }
 }
